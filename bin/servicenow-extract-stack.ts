@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { ServicenowExtractStackStack } from '../lib/servicenow-extract-stack-stack';
+import { ServicenowExtractStack } from '../lib/servicenow-extract-stack-stack';
 
 const app = new cdk.App();
-new ServicenowExtractStackStack(app, 'ServicenowExtractStackStack', {
+new ServicenowExtractStack(app, 'ServicenowExtractStackStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
@@ -19,3 +19,4 @@ new ServicenowExtractStackStack(app, 'ServicenowExtractStackStack', {
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
+cdk.Tags.of(app).add("Owner","Sou.Tokuda@sony.com");
