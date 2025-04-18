@@ -9,14 +9,16 @@ export class ServicenowExtractStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     const network = new NetworkConstruct(this, "Network", {});
+    network.addVpcEndpoints();
     const storage = new StorageConstructs(this, "Storage", {});
-    const appflow = new AppFlowConstructs(this, "AppFlow", {
-      outDataBucket: storage.outDataBucket,
-    });
+    // const appflow = new AppFlowConstructs(this, "AppFlow", {
+    //   outDataBucket: storage.outDataBucket,
+    // });
     const gluest = new GlueServiceNowConnectorStack(this, "GlueConnector", {
       outDataBucket: storage.outDataBucket,
       vpc: network.vpc,
       security_group: network.glueSecurityGroup,
+      outTableBucket: storage.outTableBucket,
     });
   }
 }

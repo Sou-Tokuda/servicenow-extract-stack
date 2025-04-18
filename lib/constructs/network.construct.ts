@@ -31,6 +31,67 @@ export class NetworkConstruct extends Construct {
       allowAllOutbound: false,
     });
 
-   
+    // STSサービスへのアクセス（VPCエンドポイント用）
+    this.glueSecurityGroup.addEgressRule(
+      cdk.aws_ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+      cdk.aws_ec2.Port.tcp(443),
+      "Allow HTTPS traffic to AWS services",
+    );
+    this.glueSecurityGroup.addIngressRule(
+      cdk.aws_ec2.Peer.ipv4(this.vpc.vpcCidrBlock),
+      cdk.aws_ec2.Port.tcp(443),
+      "Allow HTTPS traffic from within VPC",
+    );
+
+    this.glueSecurityGroup.addEgressRule(
+      cdk.aws_ec2.Peer.anyIpv4(),
+      cdk.aws_ec2.Port.tcp(443),
+      "Allow HTTPS traffic to AWS services",
+    );
+    
+  }
+
+  // VPCエンドポイントを追加するメソッド
+  public addVpcEndpoints() {
+    // STSエンドポイント
+    const stsEndpoint = new cdk.aws_ec2.InterfaceVpcEndpoint(
+      this,
+      "STSEndpoint",
+      {
+        vpc: this.vpc,
+        service: cdk.aws_ec2.InterfaceVpcEndpointAwsService.STS,
+        subnets: { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        securityGroups: [this.glueSecurityGroup],
+        privateDnsEnabled: false,
+      },
+    );
+
+    // Glueエンドポイント
+    const glueEndpoint = new cdk.aws_ec2.InterfaceVpcEndpoint(
+      this,
+      "GlueEndpoint",
+      {
+        vpc: this.vpc,
+        service: cdk.aws_ec2.InterfaceVpcEndpointAwsService.GLUE,
+        subnets: { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        securityGroups: [this.glueSecurityGroup],
+        privateDnsEnabled: false,
+      },
+    );
+
+    // SecretsManagerエンドポイント
+    const secretsManagerEndpoint = new cdk.aws_ec2.InterfaceVpcEndpoint(
+      this,
+      "SecretsManagerEndpoint",
+      {
+        vpc: this.vpc,
+        service: cdk.aws_ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
+        subnets: { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        securityGroups: [this.glueSecurityGroup],
+        privateDnsEnabled: false,
+      },
+    );
+
+    return { stsEndpoint, glueEndpoint, secretsManagerEndpoint };
   }
 }

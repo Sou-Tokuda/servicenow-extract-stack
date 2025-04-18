@@ -263,7 +263,8 @@ export class AppFlowConstructs extends Construct {
         timeout: cdk.Duration.minutes(30),
       },
     );
-
+    /*
+// AppFlowの逐次実行を止める
     const rule = new events.Rule(this, "ScheduleRule", {
       ruleName: "triggerAppFlowstepFunctions",
       schedule: events.Schedule.rate(cdk.Duration.minutes(10)),
@@ -277,5 +278,6 @@ export class AppFlowConstructs extends Construct {
         }),
       }),
     );
+    */
   }
 }

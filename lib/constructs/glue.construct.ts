@@ -4,10 +4,15 @@ import * as glue from "aws-cdk-lib/aws-glue";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { devconfig } from "../../configs/tables.config";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+// import { S3 } from "aws-cdk-lib/aws-ses-actions";
+import { TableBucket } from "@aws-cdk/aws-s3tables-alpha";
+
 export interface GlueServiceNowConnectorProps extends cdk.StackProps {
   outDataBucket: cdk.aws_s3.IBucket;
   vpc: cdk.aws_ec2.IVpc;
   security_group: cdk.aws_ec2.SecurityGroup;
+  outTableBucket: TableBucket;
 }
 
 export class GlueServiceNowConnectorStack extends Construct {
@@ -19,9 +24,11 @@ export class GlueServiceNowConnectorStack extends Construct {
     super(scope, id);
     props.security_group.addEgressRule(
       cdk.aws_ec2.Peer.ipv4("149.96.198.183/32"),
-      cdk.aws_ec2.Port.HTTPS,
+      cdk.aws_ec2.Port.tcp(443),
       "nuro dev2 service now",
     );
+  
+    
     // ServiceNowの認証情報をSecretsManagerに保存
     const serviceNowSecret = new secretsmanager.Secret(
       this,
@@ -68,6 +75,25 @@ export class GlueServiceNowConnectorStack extends Construct {
       }),
     );
 
+    glueRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "s3tables:ListTableBuckets",
+          "s3tables:GetTableBucket",
+          "s3tables:ListTables",
+          "s3tables:GetTable",
+          "s3tables:ListNamespaces",
+          "s3tables:GetNamespace",
+          "s3tables:GetTableData",
+          "s3tables:Get*",
+        ],
+        resources: [
+          props.outTableBucket.tableBucketArn,
+          `${props.outTableBucket.tableBucketArn}/*`,
+        ],
+      }),
+    );
+
     // Glue Data Catalogへのアクセス権限を付与
     glueRole.addToPolicy(
       new iam.PolicyStatement({
@@ -79,6 +105,7 @@ export class GlueServiceNowConnectorStack extends Construct {
           "glue:BatchCreatePartition",
           "glue:CreateTable",
           "glue:UpdateTable",
+          "glue:Get*",
         ],
         resources: [
           `arn:aws:glue:*:${cdk.Aws.ACCOUNT_ID}:catalog`,
@@ -88,18 +115,20 @@ export class GlueServiceNowConnectorStack extends Construct {
       }),
     );
     // VPC内でのGlue実行に必要な権限を追加
-    glueRole.addToPolicy(new iam.PolicyStatement({
+    glueRole.addToPolicy(
+      new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
-          'ec2:CreateNetworkInterface',
-          'ec2:DescribeNetworkInterfaces',
-          'ec2:DeleteNetworkInterface',
-          'ec2:DescribeVpcs',
-          'ec2:DescribeSubnets',
-          'ec2:DescribeSecurityGroups'
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeSecurityGroups",
         ],
-        resources: ['*']
-      }));
+        resources: ["*"],
+      }),
+    );
     glueRole.addToPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -124,6 +153,20 @@ export class GlueServiceNowConnectorStack extends Construct {
       }),
     );
 
+    // ZeroETL機能には必要
+    glueRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "sts:AssumeRole",
+          "sts:GetCallerIdentity",
+          "sts:GetSessionToken",
+          "sts:DecodeAuthorizationMessage",
+        ],
+        resources: ["*"],
+      }),
+    );
+
     // シークレットへの明示的なアクセス権限
     serviceNowSecret.grantRead(glueRole);
 
@@ -140,7 +183,7 @@ export class GlueServiceNowConnectorStack extends Construct {
           connectionProperties: {
             INSTANCE_URL: devconfig.instanceurl,
             ROLE_ARN: glueRole.roleArn,
-            
+            // ASSUME_ROLE_ENABLED: "true",
           },
 
           authenticationConfiguration: {
@@ -161,22 +204,28 @@ export class GlueServiceNowConnectorStack extends Construct {
     serviceNowConnection.node.addDependency(glueRole);
     serviceNowConnection.node.addDependency(props.vpc);
 
-    // // ServiceNowテーブルのクローラー
-    // const serviceNowCrawler = new glue.CfnCrawler(this, 'ServiceNowCrawler', {
-    //   name: 'servicenow-crawler',
-    //   role: 'AWSGlueServiceRole-ServiceNowCrawler', // 適切なIAMロール名に変更
-    //   targets: {
-    //     serviceNowTargets: [
-    //       {
-    //         connectionName: serviceNowConnection.ref,
-    //         tableName: 'incident', // ServiceNowのテーブル名
-    //       }
-    //     ]
-    //   },
-    //   databaseName: 'servicenow_db',
-    //   schedule: {
-    //     scheduleExpression: 'cron(0 0 * * ? *)', // 毎日実行
-    //   }
-    // });
+    //  1. crate Glue Database for glue servicenow extraction
+    const databaseName = "glue_servicenow_db";
+    const glue_servicenow_db = new glue.CfnDatabase(
+      this,
+      "glue_servicenow_database",
+      {
+        catalogId: cdk.Aws.ACCOUNT_ID,
+        databaseInput: {
+          description:
+            "database for Glue Job to store Tables from Servicenow Nuro Dev2 env. ",
+          name: databaseName,
+          locationUri: `s3://${props.outDataBucket.bucketName}/glue/`,
+        },
+        databaseName: databaseName,
+      },
+    );
+    const scriptbucket = new cdk.aws_s3.Bucket(this, "S3GluejobscriptBucket", {
+      blockPublicAccess: cdk.aws_s3.BlockPublicAccess.BLOCK_ALL,
+      bucketName: "S3GluejobscriptBucket".toLocaleLowerCase(),
+      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    scriptbucket.grantRead(glueRole);
   }
 }
