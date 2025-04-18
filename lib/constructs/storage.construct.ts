@@ -12,14 +12,14 @@ export class StorageConstructs extends Construct {
       autoDeleteObjects: true,
     });
     this.outDataBucket.addToResourcePolicy(
-        new cdk.aws_iam.PolicyStatement({
-          actions: ['s3:PutObject', 's3:GetBucketAcl', 's3:PutObjectAcl'],
-          resources: [
-            this.outDataBucket.bucketArn,
-            `${this.outDataBucket.bucketArn}/*`
-          ],
-          principals: [new cdk.aws_iam.ServicePrincipal('appflow.amazonaws.com')]
-        })
-      );
+      new cdk.aws_iam.PolicyStatement({
+        actions: ["s3:PutObject", "s3:GetBucketAcl", "s3:PutObjectAcl"],
+        resources: [
+          this.outDataBucket.bucketArn,
+          `${this.outDataBucket.bucketArn}/*`,
+        ],
+        principals: [new cdk.aws_iam.ServicePrincipal("appflow.amazonaws.com")],
+      }),
+    );
   }
 }
